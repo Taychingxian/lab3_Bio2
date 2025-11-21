@@ -1,322 +1,284 @@
-"""
-Protein-Protein Interaction Network Analyzer
-Author: Tay Ching Xian
-Description: A Streamlit application for analyzing and visualizing protein-protein 
-             interactions from BioGRID and STRING databases.
-"""
-
+#TAY CHING XIAN (A23CS0307)
 import streamlit as st
 import requests
 import pandas as pd
 import matplotlib.pyplot as plt
 import networkx as nx
-import io
 
-def get_biogrid_interactions(gene_name, access_key, organism=9606):
-    try:
-        biogrid_url = "https://webservice.thebiogrid.org/interactions"
-        params = {
-            "accessKey": access_key,
-            "format": "json",
-            "searchNames": True,
-            "geneList": gene_name,
-            "organism": organism,
-            "searchbiogridids": True,
-            "includeInteractors": True
-        }
-        response = requests.get(biogrid_url, params=params)
-        if response.status_code == 200:
-            network = response.json()
-            return network
-        else:
-            st.error(f"Error: Status code {response.status_code}")
-            return None
-    except Exception as e:
-        st.error(f"Error retrieving BioGRID data: {e}")
-        return None
+st.set_page_config(page_title="PPI Network Analyzer", page_icon="🧬", layout="wide")
 
-
-def get_string_interactions(protein_name, limit=20, species=9606):
-    try:
-        string_url = "https://string-db.org/api/json/network"
-        params = {
-            "identifiers": protein_name,
-            "species": species,
-            "limit": limit
-        }
-        response = requests.get(string_url, params=params)
-        if response.status_code == 200:
-            network = response.json()
-            return network
-        else:
-            st.error(f"Error: Status code {response.status_code}")
-            return None
-    except Exception as e:
-        st.error(f"Error retrieving STRING data: {e}")
-        return None
-
-
-def analyze_network(network_graph):
-    num_nodes = network_graph.number_of_nodes()
-    num_edges = network_graph.number_of_edges()
-    degree_centrality = nx.degree_centrality(network_graph)
-    top_5 = sorted(degree_centrality.items(), key=lambda x: -x[1])[:5]
-    
-    return {
-        'num_nodes': num_nodes,
-        'num_edges': num_edges,
-        'degree_centrality': degree_centrality,
-        'top_5': top_5
+st.markdown("""
+    <style>
+    .stApp {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     }
-
-
-def visualize_network(network_graph, top_proteins=None, seed=123):
-    fig, ax = plt.subplots(figsize=(12, 10))
-    
-    slayout = nx.spring_layout(network_graph, seed=seed)
-    
-    nx.draw(network_graph, slayout, with_labels=True, node_size=800, 
-            node_color='#0ea5e9', font_size=9, font_color='white',
-            edge_color='#94a3b8', width=1.5, ax=ax)
-    
-    if top_proteins:
-        nx.draw_networkx_nodes(network_graph, slayout, nodelist=top_proteins, 
-                               node_size=1000, node_color='#f59e0b', ax=ax)
-    
-    ax.set_title('Protein-Protein Interaction Network', fontsize=16, fontweight='bold')
-    ax.axis('off')
-    
-    return fig
-
-
-def main():
-    st.set_page_config(
-        page_title="PPI Network Analyzer",
-        page_icon="🧬",
-        layout="wide",
-        initial_sidebar_state="expanded"
-    )
-    
-    st.markdown("""
-        <style>
-        [data-testid="stSidebar"] {
-            background-color: #1e293b;
-        }
-        [data-testid="stSidebar"] label {
-            color: white !important;
-            font-weight: 500;
-        }
-        .stButton button {
-            background-color: #0ea5e9;
-            color: white;
-            border: none;
-            border-radius: 8px;
-            padding: 12px 24px;
-            font-size: 16px;
-            font-weight: 600;
-            width: 100%;
-        }
-        .stButton button:hover {
-            background-color: #0284c7;
-        }
-        [data-testid="stMetricValue"] {
-            font-size: 24px;
-            color: #0ea5e9;
-        }
-        hr {
-            margin: 20px 0;
-        }
-        </style>
+    h1 {
+        color: #2d3748;
+        font-weight: 700;
+    }
+    .stButton>button {
+        background-color: #0ea5e9;
+        color: white;
+        border-radius: 5px;
+        padding: 0.5rem 2rem;
+        font-weight: 600;
+    }
+    </style>
     """, unsafe_allow_html=True)
+
+def retrieve_ppi_biogrid(target_protein):
+    access_key = st.session_state.get('biogrid_key', '')
+    organism_id = st.session_state.get('organism_id', '9606')
     
-    st.title("🧬 Protein-Protein Interaction Network Analyzer")
-    st.markdown("Analyze and visualize protein interactions from BioGRID and STRING databases")
-    st.markdown("---")
+    url = "https://webservice.thebiogrid.org/interactions"
+    params = {
+        "accessKey": access_key,
+        "format": "json",
+        "searchNames": "true",
+        "geneList": target_protein,
+        "organism": organism_id,
+        "includeInteractors": "true"
+    }
     
-    st.sidebar.header("Data Source Selection")
+    try:
+        response = requests.get(url, params=params)
+        if response.status_code == 200:
+            data = response.json()
+            if data:
+                interactions = []
+                for key, value in data.items():
+                    interactions.append({
+                        'Protein_A': value['OFFICIAL_SYMBOL_A'],
+                        'Protein_B': value['OFFICIAL_SYMBOL_B'],
+                        'Experimental_System': value['EXPERIMENTAL_SYSTEM']
+                    })
+                return pd.DataFrame(interactions)
+    except Exception as e:
+        st.error(f"Error: {str(e)}")
     
-    database = st.sidebar.radio(
-        "Choose Database:",
-        ["STRING DB", "BioGRID DB"],
-        help="STRING: Comprehensive functional protein associations\nBioGRID: Experimental protein interactions"
-    )
+    return pd.DataFrame()
+
+def retrieve_ppi_string(target_protein):
+    species = st.session_state.get('species_id', '9606')
+    limit = st.session_state.get('max_interactions', 20)
     
-    st.sidebar.markdown("---")
-    st.sidebar.header("Input Parameters")
+    url = "https://string-db.org/api/json/network"
+    params = {
+        "identifiers": target_protein,
+        "species": species,
+        "limit": limit
+    }
     
-    if database == "BioGRID DB":
-        access_key = st.sidebar.text_input(
-            "BioGRID Access Key:",
-            type="password",
-            help="Get your access key from https://webservice.thebiogrid.org"
-        )
-        
-        gene_name = st.sidebar.text_input(
-            "Gene Symbol:",
-            value="TP53",
-            help="Enter a gene symbol (e.g., TP53, BRCA1, MB)"
-        ).strip().upper()
-        
-        organism = st.sidebar.selectbox(
-            "Organism:",
-            [("Human (9606)", 9606), ("Mouse (10090)", 10090), ("Yeast (559292)", 559292)],
-            format_func=lambda x: x[0]
-        )[1]
-        
+    try:
+        response = requests.get(url, params=params)
+        if response.status_code == 200:
+            data = response.json()
+            if data:
+                interactions = []
+                for interaction in data:
+                    interactions.append({
+                        'Protein_A': interaction['preferredName_A'],
+                        'Protein_B': interaction['preferredName_B'],
+                        'Score': interaction['score']
+                    })
+                return pd.DataFrame(interactions)
+    except Exception as e:
+        st.error(f"Error: {str(e)}")
+    
+    return pd.DataFrame()
+
+def generate_network(dataframe):
+    G = nx.Graph()
+    
+    if 'Protein_A' in dataframe.columns and 'Protein_B' in dataframe.columns:
+        for _, row in dataframe.iterrows():
+            G.add_edge(row['Protein_A'], row['Protein_B'])
+    
+    return G
+
+def get_centralities(network_graph):
+    degree_cent = nx.degree_centrality(network_graph)
+    betweenness_cent = nx.betweenness_centrality(network_graph)
+    closeness_cent = nx.closeness_centrality(network_graph)
+    eigenvector_cent = nx.eigenvector_centrality(network_graph, max_iter=1000)
+    pagerank_cent = nx.pagerank(network_graph)
+    
+    return [degree_cent, betweenness_cent, closeness_cent, eigenvector_cent, pagerank_cent]
+
+st.title("🧬 Protein-Protein Interaction Network Analyzer")
+st.markdown("Analyze PPI networks from BioGRID and STRING databases")
+st.markdown("---")
+
+col_input1, col_input2 = st.columns([2, 1])
+
+with col_input1:
+    protein_id = st.text_input("Enter Protein ID", placeholder="e.g., TP53, BRCA1, MB")
+
+with col_input2:
+    database = st.selectbox("Select Database", ["BioGRID", "STRING"])
+
+if database == "BioGRID":
+    access_key = st.text_input("BioGRID Access Key", type="password", 
+                               help="Get your free key at https://webservice.thebiogrid.org")
+    organism = st.selectbox("Select Organism", 
+                           [("Human", "9606"), ("Mouse", "10090"), ("Yeast", "559292")],
+                           format_func=lambda x: x[0])
+    st.session_state['biogrid_key'] = access_key
+    st.session_state['organism_id'] = organism[1]
+else:
+    max_interactions = st.slider("Max Interactions", 5, 50, 20)
+    species = st.selectbox("Select Species",
+                          [("Human", "9606"), ("Mouse", "10090"), ("Yeast", "4932")],
+                          format_func=lambda x: x[0])
+    st.session_state['species_id'] = species[1]
+    st.session_state['max_interactions'] = max_interactions
+
+st.markdown("---")
+
+if st.button("🔍 Analyze Network", use_container_width=True):
+    if database == "BioGRID" and not access_key:
+        st.error("❌ Please enter your BioGRID access key")
+    elif not protein_id:
+        st.error("❌ Please enter a protein ID")
     else:
-        protein_name = st.sidebar.text_input(
-            "Protein Name:",
-            value="TP53",
-            help="Enter a protein name (e.g., TP53, BRCA1, p53)"
-        ).strip()
-        
-        limit = st.sidebar.slider(
-            "Max Interactions:",
-            min_value=5,
-            max_value=50,
-            value=20,
-            help="Maximum number of interaction partners to retrieve"
-        )
-        
-        species = st.sidebar.selectbox(
-            "Species:",
-            [("Human (9606)", 9606), ("Mouse (10090)", 10090), ("Yeast (4932)", 4932)],
-            format_func=lambda x: x[0]
-        )[1]
-    
-    analyze_button = st.sidebar.button("🔬 Analyze Network", type="primary", use_container_width=True)
-    
-    st.sidebar.markdown("---")
-    st.sidebar.caption("Developed by Tay Ching Xian | Bio2 Lab 3")
-    
-    if analyze_button:
-        if database == "BioGRID DB":
-            if not access_key:
-                st.warning("⚠️ Please enter your BioGRID access key")
-                st.info("📝 Register at https://webservice.thebiogrid.org to get your access key")
-                return
+        with st.spinner(f"Fetching data from {database}..."):
+            if database == "BioGRID":
+                df_ppi = retrieve_ppi_biogrid(protein_id)
+            else:
+                df_ppi = retrieve_ppi_string(protein_id)
             
-            if not gene_name:
-                st.warning("⚠️ Please enter a gene symbol")
-                return
-            
-            with st.spinner(f"Fetching interactions for {gene_name} from BioGRID..."):
-                network_data = get_biogrid_interactions(gene_name, access_key, organism)
+            if not df_ppi.empty:
+                st.success(f"✅ Found {len(df_ppi)} interactions!")
                 
-                if network_data:
-                    network_df = pd.DataFrame.from_dict(network_data, orient='index')
+                network = generate_network(df_ppi)
+                
+                if network.number_of_nodes() > 0:
+                    centralities_list = get_centralities(network)
                     
-                    if network_df.empty:
-                        st.warning(f"No interactions found for {gene_name}")
-                        return
+                    col1, col2 = st.columns(2)
                     
-                    network_df['OFFICIAL_SYMBOL_A'] = network_df['OFFICIAL_SYMBOL_A'].str.upper()
-                    network_df['OFFICIAL_SYMBOL_B'] = network_df['OFFICIAL_SYMBOL_B'].str.upper()
+                    with col1:
+                        st.subheader("PPI data information")
+                        
+                        st.markdown("**📊 PPI DataFrame**")
+                        st.dataframe(df_ppi, use_container_width=True, height=300)
+                        
+                        st.markdown("**📈 Network Details**")
+                        detail_col1, detail_col2 = st.columns(2)
+                        with detail_col1:
+                            st.metric("Number of Nodes", network.number_of_nodes())
+                        with detail_col2:
+                            st.metric("Number of Edges", network.number_of_edges())
+                        
+                        st.markdown("**🌐 Network Visualization**")
+                        fig, ax = plt.subplots(figsize=(10, 8))
+                        pos = nx.spring_layout(network, seed=42)
+                        
+                        degree_cent = centralities_list[0]
+                        top_5_nodes = sorted(degree_cent.items(), key=lambda x: x[1], reverse=True)[:5]
+                        hub_names = [node for node, _ in top_5_nodes]
+                        node_colors = ['#f59e0b' if node in hub_names else '#0ea5e9' for node in network.nodes()]
+                        
+                        nx.draw(network, pos, 
+                                node_color=node_colors,
+                                node_size=600,
+                                with_labels=True,
+                                font_size=9,
+                                font_weight='bold',
+                                edge_color='#94a3b8',
+                                width=2,
+                                alpha=0.8,
+                                ax=ax)
+                        
+                        ax.set_title("Protein-Protein Interaction Network", 
+                                    fontsize=14, fontweight='bold', pad=20)
+                        ax.axis('off')
+                        plt.tight_layout()
+                        st.pyplot(fig)
+                        plt.close()
                     
-                    ppi_data = network_df[['OFFICIAL_SYMBOL_A', 'OFFICIAL_SYMBOL_B']]
-                    ppi_data.columns = ['protein1', 'protein2']
-                    
-                    source_name = "BioGRID"
-                    query_name = gene_name
-                    
-        else:
-            if not protein_name:
-                st.warning("⚠️ Please enter a protein name")
-                return
-            
-            with st.spinner(f"Fetching interactions for {protein_name} from STRING..."):
-                network_data = get_string_interactions(protein_name, limit, species)
-                
-                if network_data:
-                    network_df = pd.json_normalize(network_data)
-                    
-                    if network_df.empty:
-                        st.warning(f"No interactions found for {protein_name}")
-                        return
-                    
-                    ppi_data = network_df[['preferredName_A', 'preferredName_B', 'score']]
-                    ppi_data.columns = ['protein1', 'protein2', 'score']
-                    
-                    source_name = "STRING DB"
-                    query_name = protein_name
-        
-        if network_data:
-            st.success(f"✅ Successfully retrieved {len(ppi_data)} interactions from {source_name}")
-            
-            with st.spinner("Building network graph..."):
-                network_graph = nx.from_pandas_edgelist(ppi_data, "protein1", "protein2")
-                analysis = analyze_network(network_graph)
-            
-            col1, col2 = st.columns([1, 1.5], gap="large")
-            
-            with col1:
-                st.subheader("📊 Network Statistics")
-                
-                st.markdown("#### Network Size")
-                metric_col1, metric_col2 = st.columns(2)
-                with metric_col1:
-                    st.metric("Nodes (Proteins)", analysis['num_nodes'])
-                with metric_col2:
-                    st.metric("Edges (Interactions)", analysis['num_edges'])
-                
-                st.markdown("---")
-                
-                st.markdown("#### Top 5 Hub Proteins")
-                st.markdown("*Proteins with highest degree centrality*")
-                
-                for i, (protein, centrality) in enumerate(analysis['top_5'], 1):
-                    st.markdown(f"**{i}. {protein}** - Centrality: {centrality:.3f}")
-                
-                st.markdown("---")
-                
-                st.markdown("#### Interaction Data")
-                st.dataframe(ppi_data.head(10), use_container_width=True, height=300)
-                
-                st.info(f"**Query Protein:** {query_name}\n\n**Database:** {source_name}")
-            
-            with col2:
-                st.subheader("🔬 Network Visualization")
-                
-                with st.spinner("Generating network visualization..."):
-                    top_protein_names = [p[0] for p in analysis['top_5']]
-                    fig = visualize_network(network_graph, top_protein_names)
-                    
-                    st.pyplot(fig)
-                
-                st.markdown("<br>", unsafe_allow_html=True)
-                
-                info_col1, info_col2 = st.columns(2)
-                
-                with info_col1:
-                    st.markdown("""
-                        <div style='background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%); 
-                                    color: white; padding: 15px; border-radius: 8px;'>
-                            <strong>🔵 Blue Nodes</strong>
-                            <p style='margin: 10px 0 0 0; font-size: 14px;'>
-                                Standard interaction partners
-                            </p>
-                        </div>
-                    """, unsafe_allow_html=True)
-                
-                with info_col2:
-                    st.markdown("""
-                        <div style='background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); 
-                                    color: white; padding: 15px; border-radius: 8px;'>
-                            <strong>🟠 Orange Nodes</strong>
-                            <p style='margin: 10px 0 0 0; font-size: 14px;'>
-                                Top 5 hub proteins (high centrality)
-                            </p>
-                        </div>
-                    """, unsafe_allow_html=True)
-    
-    st.markdown("---")
-    st.markdown("""
-        <div style='text-align: center; color: #64748b;'>
-            <p>Data from <a href='https://thebiogrid.org/' target='_blank'>BioGRID</a> 
-            and <a href='https://string-db.org/' target='_blank'>STRING DB</a></p>
-        </div>
-    """, unsafe_allow_html=True)
+                    with col2:
+                        st.subheader("Centrality Measures")
+                        
+                        centrality_names = [
+                            "Degree Centrality",
+                            "Betweenness Centrality", 
+                            "Closeness Centrality",
+                            "Eigenvector Centrality",
+                            "PageRank Centrality"
+                        ]
+                        
+                        centrality_descriptions = [
+                            "📌 Number of direct connections",
+                            "🔗 Importance in connecting different parts",
+                            "📍 Average distance to all other nodes",
+                            "⭐ Influence based on connected neighbors",
+                            "🎯 Importance based on network structure"
+                        ]
+                        
+                        centrality_explanations = [
+                            "Proteins with more connections have higher degree centrality.",
+                            "Proteins that bridge different groups have higher betweenness.",
+                            "Proteins close to all others have higher closeness centrality.",
+                            "Proteins connected to important proteins have higher eigenvector centrality.",
+                            "Proteins receiving connections from important proteins have higher PageRank."
+                        ]
+                        
+                        for i, (name, desc, explain, cent_dict) in enumerate(zip(
+                            centrality_names, centrality_descriptions, 
+                            centrality_explanations, centralities_list)):
+                            
+                            with st.expander(f"{desc} {name}", expanded=(i==0)):
+                                st.markdown(f"*{explain}*")
+                                st.markdown("---")
+                                
+                                sorted_cent = sorted(cent_dict.items(), 
+                                                   key=lambda x: x[1], reverse=True)[:10]
+                                
+                                cent_df = pd.DataFrame(sorted_cent, 
+                                                      columns=['Protein', 'Centrality Score'])
+                                cent_df['Rank'] = range(1, len(cent_df) + 1)
+                                cent_df = cent_df[['Rank', 'Protein', 'Centrality Score']]
+                                
+                                st.dataframe(cent_df, use_container_width=True, 
+                                           hide_index=True, height=250)
+                                
+                                fig_bar, ax_bar = plt.subplots(figsize=(8, 5))
+                                proteins = [p for p, _ in sorted_cent]
+                                scores = [s for _, s in sorted_cent]
+                                
+                                bars = ax_bar.barh(proteins, scores, color='#0ea5e9')
+                                
+                                for j, bar in enumerate(bars):
+                                    if j < 5:
+                                        bar.set_color('#f59e0b')
+                                
+                                ax_bar.set_xlabel('Centrality Score', fontweight='bold')
+                                ax_bar.set_ylabel('Protein', fontweight='bold')
+                                ax_bar.set_title(f'Top 10 Proteins by {name}', 
+                                               fontweight='bold', pad=15)
+                                ax_bar.invert_yaxis()
+                                ax_bar.grid(axis='x', alpha=0.3)
+                                plt.tight_layout()
+                                st.pyplot(fig_bar)
+                                plt.close()
+                                
+                                if i == 0:
+                                    st.markdown("**🏆 Top 5 Hub Proteins:**")
+                                    for rank, (prot, score) in enumerate(sorted_cent[:5], 1):
+                                        st.markdown(f"{rank}. **{prot}** - Score: {score:.4f}")
+                else:
+                    st.warning("⚠️ Network is empty. No nodes to analyze.")
+            else:
+                st.error("❌ No interactions found. Please check your input or try a different protein/database.")
 
-
-if __name__ == "__main__":
-    main()
+st.markdown("---")
+st.markdown("""
+    <div style='text-align: center; padding: 20px;'>
+        <p style='color: #64748b; font-size: 14px;'>
+            <strong>Developed by Tay Ching Xian | Bio2 Lab 3 - November 2025</strong><br>
+            Data from <a href='https://thebiogrid.org/' target='_blank'>BioGRID</a> 
+            and <a href='https://string-db.org/' target='_blank'>STRING DB</a>
+        </p>
+    </div>
+""", unsafe_allow_html=True)
