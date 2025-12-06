@@ -1,10 +1,6 @@
 # lab3_Bio2
 # Protein-Protein Interaction (PPI) Network Analyzer
 
-**Student Name:** TAY CHING XIAN  
-**Matric ID:** A23CS0307  
-**Course:** Bio2 Lab 3 (November 2025)
-
 ## 🧬 Project Overview
 This is a comprehensive web-based tool built with **Streamlit** that allows researchers and students to visualize and analyze Protein-Protein Interaction (PPI) networks.
 
